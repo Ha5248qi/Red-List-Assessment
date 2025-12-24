@@ -1,0 +1,386 @@
+---
+title: "Red List Assessment-Polar Bear"
+author: "Haoyang Qian"
+format: pdf
+editor: visual
+echo: false
+---
+
+## Communication Text for Policy Maker
+
+The IUCN Red List classifies polar bears as “Vulnerable”. Based on sea ice and population data, this assessment reproduce the previous assessment in another method.
+
+For the result, we conducted Monte Carlo method for 1000 times, basing on sea ice data and polar bear's population data. The 95% upper and lower bounds of the model are around 0.15 and -0.83. They show that the polar bear's population is extremely unlikely to grow if the conditions do not change. Experts estimated a \~50% probability that the species falls under Least Concern, with lower probabilities for Vulnerable (\~23%), Endangered (\~18%), and Critically Endangered (\~8%). The assessment is with an average confidence score 5.5/10, which indicates a moderate confidence in the assessment.
+
+**Based on the assessment, we recommend:**
+
+-   Further monitoring of the sea ice situation and the populations of polar bear.
+-   More attention to the key factors of sea ice decline, global warming, glacier movement etc.
+-   Focusing resources on proactive conservation actions according to polar bear's most likely risk category.
+
+## Introduction
+
+This is a red list assessment for polar bear, calculating the future change of polar bear's population based on the sea ice change. Expert's judgement for the population endangered level in IUCN Red List Categories will be done based on the result of the assessment.
+
+This assessment analysed the relationship between the population abundance and sea ice level, then predicted the population change in three generation length. This assessment is conducted by Haoyang Qian. Rouwen Xiao and Ullrika Sahlin are assessing experts.
+
+\newpage
+
+## Main assumptions
+
+All the subpopulations of polar bear response consistently to sea ice change.
+
+The relationship between sea ice change and population abundance is linear.
+
+The future change of sea ice will continue linear decline based on historical trends.
+
+Model assumptions: The generation length of subpopulation fits gamma distribution. The abundance of subpopulation fit normal distribution and the slope of sea ice change rate is normally distributed as well.
+
+## Sea Ice Area，Abundance of Populations, Time(years)
+
+Sea ice value refers to the days the sea ice area value is higher that the threschold T. $$T=AreaSept+50\%\times(AreaMarch-AreaSept)$$
+
+Based on the sea ice data between 1979-2014, calculate the daily sea ice area by subpopulation boundaties, then through the linear regression model.
+
+$$ice=B_{0}+B_{year}\times year+\epsilon$$
+
+Due to inaccessible sea ice data, the regression model can not be reproduced.
+
+$$N_i^{norm}=\frac{N_i}{N_i^s}$$
+
+Calculate fitted ice value(fitted.ice)for each abundance of subpopulation at the corresponding time points, then construct a linear model with$N_{norm}$and fitted.ice
+
+$$N_{norm}=B_{BB}+B_{BS}+B_{CS}+ ... +B_{WH}+B_{globle}\times fitted.ice$$
+
+```{r}
+  #install.packages("DiagrammeR")
+library(DiagrammeR)
+```
+
+\newpage
+
+## Another Method
+
+Due to the inaccessibility of core sea ice data, which makes it difficult to reproduce the original model, the following alternative evaluation methods are proposed.
+
+Here we redefine the fitted.ice value
+
+$$fitted.ice_{i,t}=slope_{i}\times (t-t_{ref})$$ $t_{ref}$ is a reference point and $fitted.ice_{i,t}$ here indicates the change of sea ice from the year t to $t_{ref}$ for subpopulation i.
+
+$$t_{ref}=2015+\frac{3\times GL}{2}$$
+
+Then we fit the $N_{norm}$ with $fitted.ice$ and obtain the over all slope $B_{global}$ $$N_{norm} \sim fitted.ice + factor(subpop)$$
+
+Next step, we predict $N_{norm}$ in the target year(3 times generation length).
+
+$$\Delta N_{i norm} = B_{Global} \times (slope_i \times 3GL_i)$$
+
+In the end, the over all proportion change is calculated.
+
+$$Proportion\ change = \frac{\sum_i N_{i1}(1+\Delta N_{i norm}) - \sum_i N_{i}^{1}}{\sum_i N_{i}^{1}}$$
+
+$N_{i}^{1}$ is the estimated value N of sbupopulation i in the year 2015. $1+N_{i}^{norm}$ is the N value in the target year. $\sum_i N_{i1}(1+\Delta N_{i norm})$ is the total future population and $\sum_i N_{i}^{1}$ is the total initial population.
+
+```{r}
+#install.packages("readxl")
+library(readxl)
+```
+
+```{r}
+df_sheet2<-read_excel("PB_data.xlsx",sheet=2)
+```
+
+```{r}
+GLa<-df_sheet2$GL_average
+GLu<-df_sheet2$GL_u
+GLl<-df_sheet2$GL_l
+
+```
+
+```{r}
+#gamma
+Func_FINAL<-function(){
+
+generate_GL_samples <- function(mean_value, CI_l, CI_u, n = 1000) {
+  CI_half_width <- (CI_u - CI_l) / 2
+  SE <- CI_half_width / 1.96  
+
+  variance <- SE^2
+
+  shape <- (mean_value^2) / variance
+  scale <- variance / mean_value
+
+  return(rgamma(n, shape = shape, scale = scale))
+}
+
+percentiles <- c(2.5, 50, 97.5) 
+simulated_results <- list()
+GL<-c()
+for (i in 1:length(GLa)) {
+  simulated_data <- generate_GL_samples(GLa[i], GLl[i], GLu[i], 1)
+GL[i]<-simulated_data
+  simulated_results[[i]] <- quantile(simulated_data, percentiles / 100)
+}
+simulated_data
+simulated_results
+
+
+tref_results <- list()
+
+for (i in 1:length(simulated_results)) {
+ 
+  tref_results[[i]] <- 2015 + 1.5 * simulated_results[[i]]
+}
+
+tref_50 <- sapply(tref_results, `[`, 2)
+
+delta_t <- list() 
+
+for (i in 1:6) {
+
+  end_year <- 3 * GL[i]+2015
+  ceiling(end_year)
+  
+  delta_t[[i]] <- seq(from = 1979, to = end_year, by = 1) - tref_50[i]
+}
+ceiling(delta_t[[i]])
+
+#slope
+sl<-df_sheet2$Slope
+slope_SE<-df_sheet2$SE
+n<-100
+fitted_ice <- list()
+slope<-c()
+for (i in 1:length(sl)) {
+  slope_samples <- rnorm(1, mean = sl[i], sd = slope_SE[i])
+  slope[i]<-slope_samples
+  
+  fitted_ice_samples <- slope_samples * delta_t[[i]]
+
+  fitted_ice[[i]] <- fitted_ice_samples
+}
+
+fitted_ice_percentiles <- list()
+for (i in 1:length(fitted_ice)) {
+  fitted_ice_percentiles[[i]] <- quantile(fitted_ice[[i]], c(0.025, 0.5, 0.975))
+}
+
+
+N_sd<-df_sheet2$sd
+N_a2<-df_sheet2$Na2
+N_rand2<-list()
+N_norm<-list()
+N_a1<-df_sheet2$Na1
+
+
+N_rand2 <- numeric(length(fitted_ice))
+N_norm <- numeric(length(fitted_ice))
+
+
+for (i in 1:length(delta_t)){
+  N_rand2[i]<-rnorm(1, mean = N_a2[i], sd = N_sd[i])
+  N_norm[i]<-N_rand2[i]/N_a1[i]
+}
+
+N_ice_years<-c()
+N_ice_years[1] <- fitted_ice[[1]][c(1)]
+N_ice_years[2] <- fitted_ice[[2]][c(8)]
+N_ice_years[3] <- fitted_ice[[3]][c(8)]
+N_ice_years[4] <- fitted_ice[[4]][c(8)]
+N_ice_years[5] <- fitted_ice[[5]][c(9)]
+N_ice_years[6] <- fitted_ice[[6]][c(18)]
+
+for (i in 1:6){
+  model<-lm(( N_norm~N_ice_years))
+}
+B_global <- coef(model)[2]
+  assign("B_global", B_global, envir = .GlobalEnv)
+ 
+delta_N<-c()
+for (i in 1:6){
+N_norm_delta<-B_global*slope[i]*3*GL[i]
+delta_N[i]<-N_norm_delta
+}
+s_N<-sum(N_norm)
+s_N_d<-sum((delta_N+1)*(N_norm))
+PC<-(s_N_d-s_N)/s_N
+
+return(PC)
+}
+
+```
+
+```{r}
+n<-1000
+N<-c()
+ BG<-c()
+
+for (i in 1 : n){
+  c<-Func_FINAL()
+  N[i]<-c
+  BG[i]<-B_global
+}
+N <- N[N >= -1]
+```
+
+```{r, fig.width=6, fig.height=4, out.width="80%", fig.align="center"}
+N <- N[N >= -1]
+library(ggplot2)
+df <- data.frame(values = N)
+ggplot(df, aes(x = values)) +
+geom_histogram(
+    aes(y = after_stat(count) / sum(after_stat(count))), bins = 30,color = "grey", 
+  ) +
+  geom_vline(xintercept = -0.3, linetype = "dashed", linewidth = 1) +
+  geom_vline(xintercept = -0.5, linetype = "dashed", linewidth = 1) +
+  geom_vline(xintercept = -0.8, linetype = "dashed", linewidth = 1) +
+annotate("text", x = -0.3, y = 0.02, label = "X = -0.3", color = "white") +
+  annotate("text", x = -0.5, y = 0.015, label = "X = -0.5", color = "blue") +
+  annotate("text", x = -0.8, y = 0.01, label = "X = -0.8", color = "red") +
+
+  labs(
+    title = "Probability distribution of sample data N",x = "N value",y = "Probability）"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+q97.5 <- quantile(N, probs = 0.975)
+q2.5 <- quantile(N, probs = 0.025)
+cat("95% CL：", q97.5,q2.5, "\n")
+```
+
+```{r, fig.width=6, fig.height=4, out.width="80%", fig.align="center"}
+
+library(ggplot2)
+
+ggplot(data.frame(x = N), aes(x = x)) +
+  
+  stat_ecdf(geom = "line", color = "blue", linewidth = 1) + 
+  labs(
+    title = "cumulative distribution function",
+    x = "N value",
+    y = "cumulative probability (P(X ≤ x))"
+  ) +
+  geom_vline(xintercept=c(-0.8,-0.5,-0.3), 
+             color=c("red","blue","black"), 
+             linetype="dashed")+
+  ylim(0, 1) +
+  theme_minimal()
+```
+
+Generally, due to lack of sea ice data, we have to redefine fitted.ice to be the change of sea ice and find relationship between the change of ice and the change of time, instead of using an absolute sea ice value.
+
+Firstly, we generate generation length data from gamma model, which is created by the limited data we know, i.e. the lower and upper bound and mean value.
+
+Secondly, $t_{tref}$is a reference value of time, in which the absolute ice value is 0. Fitted.ice is calculated by 3\* GL \* slope, and the fitted.ice and the change of N is related by another slope $B_{global}$, which indicates the relationship between the change of ice and the change of N.
+
+Then we calculated the change of sea ice in three generations from 2015, obtain the related change of N from 2015 to 3 generations further.
+
+In the end we united all the change of N, obtain the final proportion change of the polar bear in three generations.
+
+## Uncertainties Analysis & Conclusions
+
+According to the result of the assessment, it is very unlikely that the polar bear become Critically Endangered and it is likely to be at least Vulnerable(VU) with around 50% probability.
+
+Also, the 95% upper and lower bounds of the model are q97.5 = `r q97.5`, q2.5 = `r q2.5`. They show that the polar bear's population is extremely unlikely to grow if the conditions do not change.
+
+The result is provided and based on Monte Carlo method. Due to incomplete data, this assessment calculates the change of sea ice and the normalized change of populations.
+
+Only the upper and lower bounds and mean value of the generation length are provided.The generation length is assumed to fit the gamma model. Generation length is a estimated value from the fit gamma model.
+
+The abundance of subpopulations and the slope of ice-T(years) relationship are estimated values from normal distribution model.
+
+The assessment based on many assumptions(see in former context)， in which uncertainties may be ignored.
+
+## Current Situation Analysis
+
+Due to lack of data, in order to apply the conclusion in current situation, we have to make some more assumptions:
+
+1.The relationship between sea ice change and population change is the same as it is in this assessment.
+
+2.As we can only draw a conclusion by the change of sea ice, two data point of years and sea ice should be included. In this case, sea ice extent of September and March are roughly 4 and 14 millions of $km^2$ respectively. And, the sea ice value the days the sea ice area value is higher that the threshold T, which is estimated to be 240. The over all slope of the change rate between sea ice extent and time(year) is estimated to be -1.4.
+
+![Reference sea ice extent](arctic_daily_sea_ice_std_deviation.jpg){fig.align="center"}
+
+Figure Source:https://ningchenhui.github.io/Earth-Science/Sea-ice/esA0412/
+
+```{r}
+BG<-BG*(-13)
+```
+
+```{r, fig.width=6, fig.height=4, out.width="80%", fig.align="center"}
+BG <- BG[BG >= -1]
+library(ggplot2)
+df2 <- data.frame(values2= BG)
+ggplot(df2, aes(x = values2)) +
+geom_histogram(
+    aes(y = after_stat(count) / sum(after_stat(count))), bins = 30,color = "grey", 
+  ) +
+
+  labs(
+    title = "Probability distribution of the estimated N change from 2016 to 2026",x = "N value",y = "Probability）"
+  ) +
+  theme_minimal()
+
+```
+
+Based on all the assumptions, we calculated estimated N change of polar bear from 2016 to 2026 using Monte Carlo method for 1000 times.This result shows that in the last ten years, it is more likely than not that the population of polar bear has declined.
+
+## Expert Judgment
+
+Judgement experts: Haoyang Qian, Ullrika Sahlin, Rouwen Xiao.
+
+**Judgement Overview**
+
+To ensure the scientific validity and reliability of the Assessment, three experts were invited to conduct a judgement. The scoring was performed on a 1–10 scale (1 = lowest, 10 = highest) across the following aspects:
+
+| Evaluation Item      | Description                                         |
+|----------------------|-----------------------------------------------------|
+| **Data Source**      | If the data samples are of good quality.            |
+| **Assumptions**      | If the assumptions are reasonable.                  |
+| **Technical Method** | If the models are chosen reasonable.                |
+| **Result**           | If the result correspond to the facts and reliable. |
+
+The red list category for polar bear is estimated based on the assessment, the criteria for classification are:CR(Critically endangered，population reduction \>80%, i.e. N value\<-0.8);EN(Endangered,population reduction \>50%,i.e. N value\<-0.5);VU(Vulnerable,population reduction \>30%,i.e. N value\<-0.3).
+
+**Expert Scoring Table**
+
+| No. | Expert Name | Data Source | Assumptions | Technical Method | Result | Average Score | red list category |
+|---------|---------|---------|---------|---------|---------|---------|---------|
+| 1 | Haoyang Qian | 5 | 6 | 6 | 5 | 5.5 | 10% CR;20% EN; 10% VU |
+| 2 | Ullrika Sahlin | 6 | 5 | 5 | 5 | 5.25 | 5% CR; 25% EN; 20% VU |
+| 3 | Rouwen Xiao | 4 | 6 | 7 | 6 | 5.75 | 10% CR; 10% EN; 40% VU |
+
+\newpage
+
+## Summary of Results
+
+**Overall Scoring**\
+- Average expert score: **5.5/10 (moderate level)**.\
+- Mean scores: 5.0,Assumptions: 5.67,Technical Method: 6.0,Result: 5.33.\
+- The experts' judgement shows moderate consistency, suggesting a reasonable level of agreement.
+
+**Expert Conclusion**
+
+The estimated average probabilities given by experts are:
+
+-   **Least Concern (LC): \~50%** – most probable category\
+-   **Vulnerable (VU): \~23%**\
+-   **Endangered (EN): \~18%**\
+-   **Critically Endangered (CR): \~8%**
+
+**Interpretation:**\
+- Experts consistently indicate that the species is most likely Least Concern.\
+- With an average expert confidence score of 5.5/10, the assessment is moderately reliable. - The category is primarily **Least Concern** with the average confidence of 50%, but still with probability in higher risk categories.
+
+\newpage
+
+## Reference
+
+Fol M, Tremblay B, Pfirman S, et al. Revisiting the Last Ice Area projections from a high-resolution Global Earth System Model. Communications Earth & Environment. 2025;6(46).
+
+IUCN Polar Bear Specialist Group. Supplementary Material for Ursus maritimus Red List Assessment. IUCN Red List of Threatened Species, 2015.
+
+https://ningchenhui.github.io/Earth-Science/Sea-ice/esA0412/
